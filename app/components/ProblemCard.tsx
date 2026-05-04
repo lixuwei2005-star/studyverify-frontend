@@ -6,7 +6,7 @@ type Props = {
 
 export default function ProblemCard({ problem }: Props) {
   return (
-    <section className="bg-white rounded-lg shadow p-6">
+    <section data-testid="problem-card" className="bg-white rounded-lg shadow p-6">
       <h2 className="text-xl font-bold mb-2">Problem</h2>
       <p className="text-gray-800 mb-6 leading-relaxed">{problem.problem_text}</p>
 

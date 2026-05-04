@@ -22,15 +22,16 @@ export function HintPanel({
   errorMessage,
 }: Props) {
   return (
-    <section className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-6">
+    <section data-testid="hint-panel" className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-6">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-lg font-bold">
+        <h3 data-testid="hint-counter" className="text-lg font-bold">
           💡 Hints ({hints.length}/{MAX_HINTS})
         </h3>
 
         {!maxReached && (
           <button
             type="button"
+            data-testid="get-hint-button"
             onClick={onGetHint}
             disabled={loading || disabled}
             className="px-4 py-1.5 bg-yellow-400 text-yellow-900 font-medium rounded hover:bg-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
@@ -61,6 +62,7 @@ export function HintPanel({
           {hints.map((hint) => (
             <div
               key={hint.index}
+              data-testid="hint-item"
               className="border-l-4 border-yellow-400 pl-3 py-1"
             >
               <p className="font-semibold text-sm text-yellow-800">

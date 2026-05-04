@@ -108,7 +108,10 @@ export function DemoApp() {
 
   if (loading) {
     return (
-      <section className="bg-white rounded-lg shadow p-6 min-h-[400px] flex items-center justify-center text-sm text-gray-500">
+      <section
+        data-testid="initializing"
+        className="bg-white rounded-lg shadow p-6 min-h-[400px] flex items-center justify-center text-sm text-gray-500"
+      >
         Initializing demo...
       </section>
     );
@@ -116,7 +119,7 @@ export function DemoApp() {
 
   if (error) {
     return (
-      <section className="bg-white rounded-lg shadow p-6">
+      <section data-testid="solve-error" className="bg-white rounded-lg shadow p-6">
         <div
           role="alert"
           className="border border-red-200 bg-red-50 text-red-800 rounded p-3 text-sm"
@@ -138,6 +141,7 @@ export function DemoApp() {
       {verifyError && (
         <div
           role="alert"
+          data-testid="verify-error"
           className="mt-3 bg-red-50 border border-red-200 rounded p-3 text-red-800 text-sm"
         >
           {verifyError}

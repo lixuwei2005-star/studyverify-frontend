@@ -14,15 +14,21 @@ type Props = {
 // comment exist to prevent that.
 export function TestResultsTable({ output }: Props) {
   return (
-    <div className="bg-white rounded-lg shadow p-4 mt-4">
+    <div data-testid="test-results" className="bg-white rounded-lg shadow p-4 mt-4">
       {output.verified ? (
-        <h3 className="text-green-700 font-bold">✅ All tests passed</h3>
+        <h3 data-testid="verify-header" className="text-green-700 font-bold">
+          ✅ All tests passed
+        </h3>
       ) : (
-        <h3 className="text-red-700 font-bold">❌ Verification failed</h3>
+        <h3 data-testid="verify-header" className="text-red-700 font-bold">
+          ❌ Verification failed
+        </h3>
       )}
 
       {!output.verified && output.diagnosis && (
-        <p className="text-gray-700 mt-2 leading-relaxed">{output.diagnosis}</p>
+        <p data-testid="diagnosis" className="text-gray-700 mt-2 leading-relaxed">
+          {output.diagnosis}
+        </p>
       )}
 
       <table className="w-full text-sm mt-3 border-collapse">

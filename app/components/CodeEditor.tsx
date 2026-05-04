@@ -21,7 +21,7 @@ type Props = {
 
 export function CodeEditor({ code, onChange }: Props) {
   return (
-    <div className="border border-gray-300 rounded-lg overflow-hidden">
+    <div data-testid="code-editor" className="border border-gray-300 rounded-lg overflow-hidden">
       <Monaco
         height="400px"
         defaultLanguage="python"
