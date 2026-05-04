@@ -3,11 +3,14 @@
 import { useEffect, useState } from "react";
 
 import { CodeEditor } from "./CodeEditor";
+import { HintPanel } from "./HintPanel";
 import { TestResultsTable } from "./TestResultsTable";
 import { VerifyButton } from "./VerifyButton";
-import { solveProblem, verifyCode } from "@/lib/api";
+import { getHint, solveProblem, verifyCode } from "@/lib/api";
 import { DEFAULT_BUGGY_CODE, DEMO_PROBLEM } from "@/lib/demo-problem";
-import type { VerifyResponse } from "@/lib/types";
+import type { HintViewModel, VerifyResponse } from "@/lib/types";
+
+const MAX_HINTS = 5;
 
 export function DemoApp() {
   const [code, setCode] = useState(DEFAULT_BUGGY_CODE);
@@ -23,6 +26,15 @@ export function DemoApp() {
   const [verifyOutput, setVerifyOutput] = useState<VerifyResponse["output"] | null>(null);
   const [verifyLoading, setVerifyLoading] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
+
+  // Hint state. Hints accumulate top-to-bottom (Hint 1 first). A new verify
+  // call does NOT clear prior hints in the UI — the backend ties hints to a
+  // verifier_session_id, so re-submitting creates a new chain server-side,
+  // but the UI keeps the visible history bound to the last verifier used in
+  // the hint requests. Page reload is the clean reset path for MVP.
+  const [hints, setHints] = useState<HintViewModel[]>([]);
+  const [hintLoading, setHintLoading] = useState(false);
+  const [hintError, setHintError] = useState<string | null>(null);
 
   // The cancelled flag pattern keeps Strict Mode's dev-only double-mount safe:
   // if the first effect tear-down runs before /solve resolves, the resolved
@@ -77,6 +89,23 @@ export function DemoApp() {
     }
   }
 
+  async function handleGetHint() {
+    if (!verifierSessionId) return;
+    setHintLoading(true);
+    setHintError(null);
+    try {
+      const res = await getHint(verifierSessionId);
+      setHints((prev) => [
+        ...prev,
+        { index: res.hint_index, text: res.hint_text },
+      ]);
+    } catch (err) {
+      setHintError(err instanceof Error ? err.message : "Hint request failed");
+    } finally {
+      setHintLoading(false);
+    }
+  }
+
   if (loading) {
     return (
       <section className="bg-white rounded-lg shadow p-6 min-h-[400px] flex items-center justify-center text-sm text-gray-500">
@@ -116,6 +145,15 @@ export function DemoApp() {
       )}
 
       {verifyOutput && <TestResultsTable output={verifyOutput} />}
+
+      <HintPanel
+        hints={hints}
+        onGetHint={handleGetHint}
+        loading={hintLoading}
+        maxReached={hints.length >= MAX_HINTS}
+        disabled={!verifierSessionId}
+        errorMessage={hintError ?? undefined}
+      />
 
       {solverSessionId && (
         <p className="mt-3 text-xs text-gray-400 font-mono">

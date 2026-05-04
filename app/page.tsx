@@ -9,9 +9,6 @@ export default function Home() {
         <ProblemCard problem={DEMO_PROBLEM} />
         <DemoApp />
       </div>
-      <section className="bg-white rounded-lg shadow p-6 mt-6 flex items-center justify-center text-gray-400 text-sm">
-        Hint panel coming Phase 6
-      </section>
     </main>
   );
 }
