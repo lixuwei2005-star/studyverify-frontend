@@ -9,8 +9,28 @@ import { VerifyButton } from "./VerifyButton";
 import { getHint, solveProblem, verifyCode } from "@/lib/api";
 import { DEFAULT_BUGGY_CODE, DEMO_PROBLEM } from "@/lib/demo-problem";
 import type { HintViewModel, VerifyResponse } from "@/lib/types";
+import { useLoadingTimer, type LoadingStage } from "@/lib/use-loading-timer";
 
 const MAX_HINTS = 5;
+
+const INIT_STAGES: LoadingStage[] = [
+  { untilSeconds: 5, label: "Calling LLM" },
+  { untilSeconds: 12, label: "Running sandbox tests" },
+  { untilSeconds: 18, label: "Verifying solution" },
+  { untilSeconds: Infinity, label: "Almost there" },
+];
+
+const VERIFY_STAGES: LoadingStage[] = [
+  { untilSeconds: 3, label: "Running sandbox" },
+  { untilSeconds: 8, label: "Generating diagnosis" },
+  { untilSeconds: Infinity, label: "Almost there" },
+];
+
+const HINT_STAGES: LoadingStage[] = [
+  { untilSeconds: 2, label: "Retrieving similar cases" },
+  { untilSeconds: 6, label: "Generating hint" },
+  { untilSeconds: Infinity, label: "Almost there" },
+];
 
 export function DemoApp() {
   const [code, setCode] = useState(DEFAULT_BUGGY_CODE);
@@ -35,6 +55,19 @@ export function DemoApp() {
   const [hints, setHints] = useState<HintViewModel[]>([]);
   const [hintLoading, setHintLoading] = useState(false);
   const [hintError, setHintError] = useState<string | null>(null);
+
+  const { elapsed: initElapsed, stage: initStage } = useLoadingTimer(
+    loading,
+    INIT_STAGES,
+  );
+  const { elapsed: verifyElapsed, stage: verifyStage } = useLoadingTimer(
+    verifyLoading,
+    VERIFY_STAGES,
+  );
+  const { elapsed: hintElapsed, stage: hintStage } = useLoadingTimer(
+    hintLoading,
+    HINT_STAGES,
+  );
 
   // The cancelled flag pattern keeps Strict Mode's dev-only double-mount safe:
   // if the first effect tear-down runs before /solve resolves, the resolved
@@ -110,9 +143,9 @@ export function DemoApp() {
     return (
       <section
         data-testid="initializing"
-        className="bg-white rounded-lg shadow p-6 min-h-[400px] flex items-center justify-center text-sm text-gray-500"
+        className="bg-white rounded-lg shadow p-6 min-h-[400px] flex items-center justify-center text-sm text-gray-600"
       >
-        Initializing demo...
+        {initStage}... <span className="text-gray-400 ml-1">({initElapsed}s)</span>
       </section>
     );
   }
@@ -135,7 +168,12 @@ export function DemoApp() {
       <CodeEditor code={code} onChange={setCode} />
 
       <div className="mt-4 flex gap-2">
-        <VerifyButton onClick={handleVerify} loading={verifyLoading} />
+        <VerifyButton
+          onClick={handleVerify}
+          loading={verifyLoading}
+          stage={verifyStage}
+          elapsed={verifyElapsed}
+        />
       </div>
 
       {verifyError && (
@@ -157,6 +195,8 @@ export function DemoApp() {
         maxReached={hints.length >= MAX_HINTS}
         disabled={!verifierSessionId}
         errorMessage={hintError ?? undefined}
+        stage={hintStage}
+        elapsed={hintElapsed}
       />
 
       {solverSessionId && (

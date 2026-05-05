@@ -9,6 +9,8 @@ type Props = {
   maxReached: boolean;
   disabled: boolean;
   errorMessage?: string;
+  stage?: string;
+  elapsed?: number;
 };
 
 const MAX_HINTS = 5; // mirrors backend MAX_HINTS_PER_VERIFIER_SESSION
@@ -20,7 +22,13 @@ export function HintPanel({
   maxReached,
   disabled,
   errorMessage,
+  stage,
+  elapsed,
 }: Props) {
+  const loadingLabel =
+    stage !== undefined && elapsed !== undefined
+      ? `${stage}... (${elapsed}s)`
+      : "Loading...";
   return (
     <section data-testid="hint-panel" className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mt-6">
       <div className="flex items-center justify-between mb-3">
@@ -37,7 +45,7 @@ export function HintPanel({
             className="px-4 py-1.5 bg-yellow-400 text-yellow-900 font-medium rounded hover:bg-yellow-500 disabled:opacity-50 disabled:cursor-not-allowed transition text-sm"
           >
             {loading
-              ? "Loading..."
+              ? loadingLabel
               : hints.length === 0
                 ? "Get a Hint"
                 : `Get Hint #${hints.length + 1}`}
