@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 
 import { generateTestCases } from "@/lib/api";
 import { type CustomProblem, validateCustomProblem } from "@/lib/custom-problems";
-import type { TestCase } from "@/lib/types";
 
 type Props = {
   open: boolean;
@@ -14,20 +13,39 @@ type Props = {
 };
 
 const FN_NAME_RE = /^[a-z_][a-z0-9_]*$/;
+const PROBLEM_ID_RE = /^[a-z0-9-]+$/;
+
+function validateMetadata(
+  problemId: string,
+  description: string,
+  functionName: string,
+): string[] {
+  const errors: string[] = [];
+  if (!problemId.trim()) errors.push("Problem ID is required");
+  else if (!PROBLEM_ID_RE.test(problemId.trim()))
+    errors.push("Problem ID: lowercase letters, digits, hyphens only");
+
+  if (!description.trim()) errors.push("Description is required");
+  else if (description.trim().length < 10)
+    errors.push("Description should be at least 10 characters");
+
+  if (!functionName.trim()) errors.push("Function name is required");
+  else if (!FN_NAME_RE.test(functionName.trim()))
+    errors.push("Function name: must be a valid Python identifier (lowercase)");
+
+  return errors;
+}
 
 export function AddProblemModal({ open, onClose, onSave, existingIds }: Props) {
   const [problemId, setProblemId] = useState("");
   const [description, setDescription] = useState("");
   const [functionName, setFunctionName] = useState("");
-  const [testCases, setTestCases] = useState<TestCase[]>([]);
-  const [generating, setGenerating] = useState(false);
-  const [generationError, setGenerationError] = useState<string | null>(null);
-  const [aiGenerated, setAiGenerated] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Cancel-flag wrapped in a ref so a stale auto-generate request that
-  // resolves after the modal closes (or a new generation kicks off) does
-  // not setState into the closed/replaced UI.
+  // Cancel flag for the in-flight generate request: if the user closes the
+  // modal before the LLM responds, skip the setState that would re-open it.
   const cancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
   useEffect(() => {
@@ -35,11 +53,9 @@ export function AddProblemModal({ open, onClose, onSave, existingIds }: Props) {
       setProblemId("");
       setDescription("");
       setFunctionName("");
-      setTestCases([]);
-      setGenerating(false);
-      setGenerationError(null);
-      setAiGenerated(false);
       setErrors([]);
+      setSaving(false);
+      setSaveError(null);
       cancelRef.current = { cancelled: false };
     }
     return () => {
@@ -47,76 +63,68 @@ export function AddProblemModal({ open, onClose, onSave, existingIds }: Props) {
     };
   }, [open]);
 
-  const triggerAutoGenerate = async () => {
-    if (
-      !problemId.trim() ||
-      !description.trim() ||
-      description.trim().length < 10 ||
-      !functionName.trim() ||
-      !FN_NAME_RE.test(functionName) ||
-      testCases.length > 0 ||
-      generating
-    ) {
+  const handleSave = async () => {
+    const metaErrors = validateMetadata(problemId, description, functionName);
+    if (metaErrors.length > 0) {
+      setErrors(metaErrors);
+      setSaveError(null);
       return;
     }
+    if (existingIds.includes(problemId.trim())) {
+      setErrors([`Problem ID "${problemId.trim()}" already exists`]);
+      setSaveError(null);
+      return;
+    }
+    setErrors([]);
 
     cancelRef.current = { cancelled: false };
     const localCancel = cancelRef.current;
 
-    setGenerating(true);
-    setGenerationError(null);
+    setSaving(true);
+    setSaveError(null);
 
     try {
-      const generated = await generateTestCases(description.trim(), functionName.trim(), 5);
+      const generated = await generateTestCases(
+        description.trim(),
+        functionName.trim(),
+        5,
+      );
       if (localCancel.cancelled) return;
-      setTestCases(generated);
-      setAiGenerated(true);
+
+      const problem: CustomProblem = {
+        problem_id: problemId.trim(),
+        problem_text: description.trim(),
+        entry_function: functionName.trim(),
+        test_cases: generated.map((tc) => ({
+          input: tc.input,
+          expected: tc.expected,
+          description: tc.description ?? "",
+        })),
+        source: "custom",
+        createdAt: Date.now(),
+      };
+
+      // Defensive: backend Pydantic + LLM should already produce valid
+      // test cases, but if a response came back empty, surface it as a
+      // generation failure rather than saving an unusable problem.
+      const finalCheck = validateCustomProblem(problem);
+      if (!finalCheck.valid) {
+        setSaveError(`Generated test cases were invalid: ${finalCheck.errors.join("; ")}`);
+        setSaving(false);
+        return;
+      }
+
+      onSave(problem);
+      onClose();
     } catch (e) {
       if (localCancel.cancelled) return;
-      setGenerationError(e instanceof Error ? e.message : "Generation failed");
-    } finally {
-      if (!localCancel.cancelled) setGenerating(false);
+      setSaveError(
+        e instanceof Error
+          ? `Failed to generate test cases: ${e.message}`
+          : "Failed to generate test cases",
+      );
+      setSaving(false);
     }
-  };
-
-  const handleRegenerate = () => {
-    // Cancel any in-flight generation and reset cases so the gating
-    // condition in triggerAutoGenerate (testCases.length > 0) clears.
-    cancelRef.current.cancelled = true;
-    setTestCases([]);
-    setAiGenerated(false);
-    // Schedule on next tick so the cleared state is applied before the new
-    // call runs; otherwise the gate would still see the stale length.
-    setTimeout(triggerAutoGenerate, 0);
-  };
-
-  const handleSave = () => {
-    const problem: CustomProblem = {
-      problem_id: problemId.trim(),
-      problem_text: description.trim(),
-      entry_function: functionName.trim(),
-      test_cases: testCases.map((tc) => ({
-        input: tc.input,
-        expected: tc.expected,
-        description: tc.description ?? "",
-      })),
-      source: "custom",
-      createdAt: Date.now(),
-    };
-
-    const validation = validateCustomProblem(problem);
-    if (!validation.valid) {
-      setErrors(validation.errors);
-      return;
-    }
-
-    if (existingIds.includes(problem.problem_id)) {
-      setErrors([`Problem ID "${problem.problem_id}" already exists`]);
-      return;
-    }
-
-    onSave(problem);
-    onClose();
   };
 
   if (!open) return null;
@@ -143,7 +151,8 @@ export function AddProblemModal({ open, onClose, onSave, existingIds }: Props) {
               value={problemId}
               onChange={(e) => setProblemId(e.target.value)}
               placeholder="my-fizzbuzz"
-              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded"
+              disabled={saving}
+              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded disabled:bg-gray-50 disabled:text-gray-500"
               data-testid="problem-id-input"
             />
             <p className="text-xs text-gray-500 mt-1">
@@ -158,7 +167,8 @@ export function AddProblemModal({ open, onClose, onSave, existingIds }: Props) {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe what the function should do..."
               rows={4}
-              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded"
+              disabled={saving}
+              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded disabled:bg-gray-50 disabled:text-gray-500"
               data-testid="problem-text-input"
             />
           </div>
@@ -169,106 +179,34 @@ export function AddProblemModal({ open, onClose, onSave, existingIds }: Props) {
               type="text"
               value={functionName}
               onChange={(e) => setFunctionName(e.target.value)}
-              onBlur={triggerAutoGenerate}
               placeholder="fizzbuzz"
-              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded"
+              disabled={saving}
+              className="mt-1 w-full px-3 py-2 border border-gray-300 rounded disabled:bg-gray-50 disabled:text-gray-500"
               data-testid="function-name-input"
             />
             <p className="text-xs text-gray-500 mt-1">
-              Python identifier (test cases will auto-generate)
+              Python identifier (test cases will auto-generate on Save)
             </p>
           </div>
 
-          <div>
-            <div className="flex items-center justify-between">
-              <label className="block text-sm font-medium text-gray-700">Test Cases</label>
-              {testCases.length > 0 && !generating && (
-                <button
-                  type="button"
-                  onClick={handleRegenerate}
-                  className="text-xs text-blue-600 hover:underline"
-                  data-testid="regenerate-test-cases-button"
-                >
-                  🪄 Regenerate
-                </button>
-              )}
+          {saving && (
+            <div
+              className="p-3 bg-blue-50 text-blue-800 rounded text-sm"
+              data-testid="saving-banner"
+            >
+              🪄 Generating test cases... (this takes 5-10 seconds)
             </div>
+          )}
 
-            {generating && (
-              <div
-                className="mt-2 p-3 bg-gray-50 rounded text-sm text-gray-600"
-                data-testid="test-cases-generating"
-              >
-                🪄 Generating test cases... (this takes 5-10 seconds)
-              </div>
-            )}
-
-            {generationError && (
-              <div className="mt-2 p-3 bg-red-50 text-red-700 rounded text-sm">
-                {generationError}. You can add test cases manually.
-              </div>
-            )}
-
-            {aiGenerated && testCases.length > 0 && !generating && (
-              <div
-                className="mt-2 p-2 bg-yellow-50 text-yellow-800 rounded text-xs"
-                data-testid="ai-generated-banner"
-              >
-                ⚠️ AI generated, please review and edit.
-              </div>
-            )}
-
-            <div className="mt-2 space-y-2" data-testid="test-cases-list">
-              {testCases.map((tc, i) => (
-                <div key={i} className="flex gap-2 items-start">
-                  <input
-                    type="text"
-                    value={tc.input}
-                    onChange={(e) => {
-                      const updated = [...testCases];
-                      updated[i] = { ...tc, input: e.target.value };
-                      setTestCases(updated);
-                    }}
-                    placeholder="Input"
-                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm font-mono"
-                  />
-                  <span className="text-gray-400 mt-1">→</span>
-                  <input
-                    type="text"
-                    value={tc.expected}
-                    onChange={(e) => {
-                      const updated = [...testCases];
-                      updated[i] = { ...tc, expected: e.target.value };
-                      setTestCases(updated);
-                    }}
-                    placeholder="Expected"
-                    className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm font-mono"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setTestCases(testCases.filter((_, idx) => idx !== i));
-                    }}
-                    className="px-2 py-1 text-red-600 hover:bg-red-50 rounded"
-                    title="Delete test case"
-                  >
-                    ×
-                  </button>
-                </div>
-              ))}
-
-              <button
-                type="button"
-                onClick={() => {
-                  setTestCases([...testCases, { input: "", expected: "", description: "" }]);
-                }}
-                className="text-sm text-blue-600 hover:underline"
-                data-testid="add-test-case-button"
-              >
-                + Add Test Case
-              </button>
+          {saveError && (
+            <div
+              role="alert"
+              data-testid="save-error"
+              className="p-3 bg-red-50 text-red-700 rounded text-sm"
+            >
+              {saveError}
             </div>
-          </div>
+          )}
 
           {errors.length > 0 && (
             <div
@@ -289,18 +227,19 @@ export function AddProblemModal({ open, onClose, onSave, existingIds }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded"
+            disabled={saving}
+            className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded disabled:opacity-50 disabled:cursor-not-allowed"
           >
             Cancel
           </button>
           <button
             type="button"
             onClick={handleSave}
-            disabled={generating}
-            className="px-6 py-2 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 disabled:opacity-50"
+            disabled={saving}
+            className="px-6 py-2 bg-blue-600 text-white font-medium rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid="save-problem-button"
           >
-            Save & Try
+            {saving ? "Generating..." : "Save & Try"}
           </button>
         </div>
       </div>
