@@ -12,6 +12,7 @@ import type {
   HintResponse,
   SolveRequest,
   SolveResponse,
+  TestCase,
   VerifyResponse,
 } from "./types";
 
@@ -44,6 +45,19 @@ export function _resetMocks(): void {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function generateTestCasesMock(
+  _problem_text: string,
+  _entry_function: string,
+  _n: number,
+): Promise<TestCase[]> {
+  await delay(1000);
+  return [
+    { input: "[1, 2, 3]", expected: "6", description: "[mock] normal case" },
+    { input: "[]", expected: "0", description: "[mock] empty list" },
+    { input: "[-1, 1]", expected: "0", description: "[mock] negatives" },
+  ];
 }
 
 export async function solveProblemMock(problem: SolveRequest): Promise<SolveResponse> {

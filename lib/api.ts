@@ -5,11 +5,17 @@
 // (Next.js inlines NEXT_PUBLIC_* env vars into the client bundle). Default is
 // "mock" so a fresh `npm run dev` works without any backend dependency.
 
-import { getHintMock, solveProblemMock, verifyCodeMock } from "./mock-api";
+import {
+  generateTestCasesMock,
+  getHintMock,
+  solveProblemMock,
+  verifyCodeMock,
+} from "./mock-api";
 import type {
   HintResponse,
   SolveRequest,
   SolveResponse,
+  TestCase,
   VerifyResponse,
 } from "./types";
 
@@ -53,6 +59,25 @@ export async function verifyCode(
     throw new Error(`Verify failed: ${res.status} ${res.statusText}`);
   }
   return res.json();
+}
+
+export async function generateTestCases(
+  problem_text: string,
+  entry_function: string,
+  n: number = 5,
+): Promise<TestCase[]> {
+  if (isMockMode()) return generateTestCasesMock(problem_text, entry_function, n);
+
+  const res = await fetch(`${API_BASE}/api/v1/generate-test-cases`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ problem_text, entry_function, n }),
+  });
+  if (!res.ok) {
+    throw new Error(`Test case generation failed: ${res.status} ${res.statusText}`);
+  }
+  const data = (await res.json()) as { test_cases: TestCase[] };
+  return data.test_cases;
 }
 
 export async function getHint(verifierSessionId: string): Promise<HintResponse> {
